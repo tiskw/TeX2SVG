@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+
+"""
+Converter from TeX to SVG
+"""
+
+__version__ = "0.0"
+
+
+import argparse
+import datetime
+import sys
+import os
+
+
+DICT_FONTS = {
+    "ccfonts" : [r"\usepackage{ccfonts,concmath}"],
+    "cmbright": [r"\usepackage{cmbright}"],
+    "fourier" : [r"\usepackage{fourier}"],
+    "txfonts" : [r"\usepackage{txfonts}"],
+    "pxfonts" : [r"\usepackage{pxfonts}"],
+}
+
+
+def parse_args():
+    """
+    Parse command line arguments.
+
+    Returns:
+        args (argparse.Namespace): Parsed command line arguments.
+    """
+    fmtcls = lambda prog: argparse.ArgumentDefaultsHelpFormatter(prog, max_help_position=32)
+    parser = argparse.ArgumentParser(description=__doc__.strip(), formatter_class=fmtcls, add_help=False)
+
+    # Options for debug.
+    group1 = parser.add_argument_group("LaTeX command argumnts")
+    group1.add_argument("latex_command", nargs="+",
+                        help="LaTeX command(s)")
+
+     # Options for TeX style.
+    group2 = parser.add_argument_group("Style options")
+    group2.add_argument("-f", "--font", metavar="STR", default="", choices=DICT_FONTS.keys(),
+                        help="font name")
+    group2.add_argument("-l", "--list_fonts", action="store_true",
+                        help="show all available font name and exit")
+
+      # Options for output.
+    group2 = parser.add_argument_group("Output options")
+    group2.add_argument("-o", "--output", metavar="STR", default="tex2svg_%Y-%m-%d_%H-%M-%S.svg",
+                        help="output file name")
+
+    # Other optioins.
+    group9 = parser.add_argument_group("Other options")
+    group9.add_argument("-h", "--help", action="help",
+                        help="show this help message and exit")
+    group9.add_argument("-v", "--version", action="version", version=__version__,
+                        help="show program's version info and exit")
+
+
+    return parser.parse_args()
+
+
+def proc_one_command(latex_command, font_name, path_out, index=None):
+    """
+
+    Args:
+        tex_command   (str):
+        font_name     (str):
+        output_format (str):
+    """
+    # Update output path.
+    if index is not None:
+        if path_out.endswith(".svg"): path_out = path_out[:-4] + "_%02d.svg" % index
+        else                        : path_out = path_out      + "_%02d.svg" % index
+
+    # Specify document class
+    lines = [r"\documentclass{article}"]
+
+    # Load usual latex packages
+    lines += [r"\usepackage{amsmath,amssymb}"]
+
+    # Load ccfont (and concmath) package
+    if   font_name == ""        : pass
+    elif font_name == "ccfonts" : lines += [r"\usepackage{ccfonts,concmath}"]
+    elif font_name == "cmbright": lines += [r"\usepackage{cmbright}"]
+    elif font_name == "fourier" : lines += [r"\usepackage{fourier}"]
+    elif font_name == "txfonts" : lines += [r"\usepackage{txfonts}"]
+    elif font_name == "pxfonts" : lines += [r"\usepackage{pxfonts}"]
+    else                        : raise ValueError("Unknown font name: " + font_name)
+
+    # Specify page style and start tex document
+    lines += [r"\pagestyle{empty}"]
+    lines += [r"\begin{document}"]
+
+    # Add tex command
+    lines += [latex_command]
+
+    # End tex document
+    lines += [r"\end{document}"]
+
+    # Write lines to temporary tex file
+    with open("/tmp/tex2svg.tmp.tex", "w") as ofp:
+        ofp.write("\n".join(lines))
+
+    # Execute command to generate dvi, png and svg
+    os.system("latex -interaction=nonstopmode --output-directory=/tmp/ /tmp/tex2svg.tmp.tex")
+    os.system("dvipng -p 1 -D 2400 -T tight -o /tmp/tex2svg.tmp.png /tmp/tex2svg.tmp.dvi")
+    os.system("convert /tmp/tex2svg.tmp.png /tmp/tex2svg.tmp.pnm")
+    os.system("potrace -s -o %s /tmp/tex2svg.tmp.pnm" % path_out)
+    os.system("rm -f /tmp/tex2svg.tmp.*")
+
+
+def main(args):
+    """
+    Entry point of Tex2SVG.
+
+    Args:
+        args (argparse.Namespace): Parsed command line arguments.
+    """
+    # If --list_font is specified then print all available font names and exit.
+    if args.list_fonts:
+        print("\n".join(DICT_FONTS.keys()))
+        exit()
+
+    # Define output path.
+    path_out = datetime.datetime.now().strftime(args.output)
+
+    # Process latex command one by one.
+    for index, latex_command in enumerate(args.latex_command):
+        if len(args.latex_command) == 1: proc_one_command(latex_command, args.font, path_out)
+        else                           : proc_one_command(latex_command, args.font, path_out, index)
+
+
+if __name__ == "__main__":
+    main(parse_args())
+
+
+# vim: expandtab tabstop=4 shiftwidth=4 fdm=marker
